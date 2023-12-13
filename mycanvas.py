@@ -25,6 +25,7 @@ class MyCanvas(QtOpenGL.QGLWidget):
         self.m_pt1 = QtCore.QPoint(0, 0)
         self.m_hmodel = HeModel()
         self.m_controller = HeController(self.m_hmodel)
+        self.tol = 0.1
         
     def initializeGL(self):
         #glClearColor(1.0, 1.0, 1.0, 1.0)
@@ -45,7 +46,7 @@ class MyCanvas(QtOpenGL.QGLWidget):
         glOrtho(self.m_L,self.m_R,self.m_B,self.m_T,-1.0,1.0)
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
-        
+    
     def paintGL(self):
         glClear(GL_COLOR_BUFFER_BIT)
         if(self.m_model==None)or(self.m_model.isEmpty()): 
@@ -77,30 +78,96 @@ class MyCanvas(QtOpenGL.QGLWidget):
             glEnd()
         
         if not(self.m_hmodel.isEmpty()):
-            patches = self.m_hmodel.getPatches() 
+            print("teste")
+            patches = self.m_hmodel.getPatches() # retalhos, regioes construídas automaticamente
+            glColor3f(3.0, 0.0, 1.0)
             for pat in patches:
-                pts = pat.getPoints()
-                triangs = Tesselation.tessellate(pts)
-                for j in range(0, len(triangs)): 
-                    glColor3f(1.0, 0.0, 1.0) #
+                print('Patches: ' + str(len(patches)))
+                triangs = Tesselation.tessellate(pat.getPoints())
+                for triang in triangs:
                     glBegin(GL_TRIANGLES)
-                    for k in range(3):
-                        point = triangs[j][k]
-                        index = pts.index(point)
-                        glVertex2d(pts[index].getX(), pts[index].getY())
+                    for pt in triang:
+                        glVertex2d(pt.getX(), pt.getY())
                     glEnd()
-                    
+
             segments = self.m_hmodel.getSegments()
+            glColor3f(0.0, 1.0, 1.0)
+            print(len(segments))
             for curv in segments:
                 ptc = curv.getPointsToDraw()
-                glColor3f(0.0, 1.0, 1.0) #
                 glBegin(GL_LINES)
-                for curv in curves:
-                    glVertex2f(ptc[0].getX(), ptc[0].getY())
-                    glVertex2f(ptc[1].getX(), ptc[1].getY())
+
+                glVertex2f(ptc[0].getX(), ptc[0].getY())
+                glVertex2f(ptc[1].getX(), ptc[1].getY())
+                
                 glEnd()
                 
+            verts = self.m_hmodel.getPoints()
+            glColor3f(1.0, 0.0, 0.0)
+            glPointSize(5)
+            glBegin(GL_POINTS)
+            for vert in verts:
+                glVertex2f(vert.getX(), vert.getY())
+            glEnd()
+            print(verts)
+            
         glEndList()
+        
+        if(len(patches) > 0):
+            x_min = min(vtx.getX() for vtx in verts)
+            x_max = max(vtx.getX() for vtx in verts)
+            y_min = min(vtx.getY() for vtx in verts)
+            y_max = max(vtx.getY() for vtx in verts)
+            spacing = 60
+            
+            grid_points = self.generateGridPoints(x_min, x_max, y_min, y_max, spacing)
+
+            points_inside_region = [pt for pt in grid_points if self.isPointInsideRegion(pt, verts)]
+            
+            glColor3f(1.0, 1.0, 0.0)  # Cor amarela para os pontos do grid
+            glPointSize(5)
+            glBegin(GL_POINTS)
+            for pt in points_inside_region:
+                glVertex2f(pt[0], pt[1])
+            glEnd()
+    
+    def generateGridPoints(self, x_min, x_max, y_min, y_max, spacing):
+        points = []
+        y = y_min
+        while y <= y_max:
+            x = x_min
+            while x <= x_max:
+                points.append((x, y))
+                x += spacing
+            y += spacing
+        return points
+    
+    # def isPointInsideRegion(self, point, region_vertices):
+    #     x_min = min(vertex.getX() for vertex in region_vertices)
+    #     x_max = max(vertex.getX() for vertex in region_vertices)
+    #     y_min = min(vertex.getY() for vertex in region_vertices)
+    #     y_max = max(vertex.getY() for vertex in region_vertices)
+    #     x, y = point
+    #     return x_min <= x <= x_max and y_min <= y <= y_max
+    
+    def isPointInsideRegion(self, point, polygon_vertices):
+        x, y = point
+        n = len(polygon_vertices)
+        inside = False
+
+        p1x, p1y = polygon_vertices[0].getX(), polygon_vertices[0].getY()
+        for i in range(1, n + 1):
+            p2x, p2y = polygon_vertices[i % n].getX(), polygon_vertices[i % n].getY()
+            if y > min(p1y, p2y):
+                if y <= max(p1y, p2y):
+                    if x <= max(p1x, p2x):
+                        if p1y != p2y:
+                            xints = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
+                        if p1x == p2x or x <= xints:
+                            inside = not inside
+            p1x, p1y = p2x, p2y
+
+        return inside
             
     def convertPtCoordsToUniverse(self, _pt):
         dX = self.m_R - self.m_L
