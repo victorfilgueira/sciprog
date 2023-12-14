@@ -3,6 +3,7 @@ from PyQt5.QtGui import *
 from forceselection import ForceSelection
 from mycanvas import *
 from mygrid import MyGrid
+from restrselection import RestrSelection
 from temperatureselection import TemperatureSelection
 from mymodel import *
 import json
@@ -16,6 +17,7 @@ class MyWindow(QMainWindow):
         self.setCentralWidget(self.canvas)
         self.tempSelector = TemperatureSelection()
         self.forceSelector = ForceSelection()
+        self.restrSelector = RestrSelection()
         # create a model object and pass to canvas
         self.model = MyModel()
         self.canvas.setModel(self.model)
@@ -31,6 +33,8 @@ class MyWindow(QMainWindow):
         tb.addAction(temp)
         force = QAction(QIcon("icons/force.png"), "force", self)
         tb.addAction(force)
+        restr = QAction(QIcon("icons/restr.png"), "restr", self)
+        tb.addAction(restr)
         data = QAction(QIcon("icons/export.png"), "data", self)
         tb.addAction(data)
         tb.actionTriggered[QAction].connect(self.tbpressed)
@@ -47,6 +51,9 @@ class MyWindow(QMainWindow):
         if a.text() == "force":
             self.forceSelector.exec_()
             self.canvas.setForce(self.forceSelector.force)
+        if a.text() == "restr":
+            self.restrSelector.exec_()
+            self.canvas.setRestr(self.restrSelector.restr)
         if a.text() == "data":
             self.generateData()
 
@@ -58,7 +65,7 @@ class MyWindow(QMainWindow):
         conexoes = []
         contorno = []
         forcas = []
-        pointsForce = self.canvas.pointForce
+        restrs = []
         
         print("Pontos: ", end="")
         for i in range(len(canvasP) -1 , -1, -1):
@@ -122,9 +129,18 @@ class MyWindow(QMainWindow):
                 forcas.append([0,0])
         
         print("Forças: ", forcas)
+        
+        for i in pointsDict.values():
+            r = list(pointsDict.keys())[list(pointsDict.values()).index(i)]
+            if(r in self.canvas.pointRestr.keys()):
+                restrs.append([1, self.canvas.pointRestr[r]])
+            else:
+                restrs.append([0,0])
+        
+        print("Restrições: ", restrs)
 
         with open('points.json', 'w', encoding='utf-8') as f:
-            json.dump({"coords": coords, "connect": conexoes, "contour": contorno, "forces": forcas}, f, ensure_ascii=False, indent=4)
+            json.dump({"coords": coords, "connect": conexoes, "contour": contorno, "forces": forcas, "restrs": restrs}, f, ensure_ascii=False, indent=4)
 
     def createJson(self):
         conexoes = self.canvas.conexoes

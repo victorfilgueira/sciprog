@@ -32,6 +32,7 @@ class MyCanvas(QtOpenGL.QGLWidget):
         self.pointsIn = []
         self.pointTemp = dict()
         self.pointForce = dict()
+        self.pointRestr = dict()
         self.points = []
         self.selections = []
         
@@ -265,6 +266,11 @@ class MyCanvas(QtOpenGL.QGLWidget):
     def setForce(self, force):
         for p in self.selections:
             self.pointForce[(p[0],p[1])] = force
+        self.selections = []
+        
+    def setRestr(self, restr):
+        for p in self.selections:
+            self.pointRestr[(p[0],p[1])] = restr
         self.selections = []
     
     def setModel(self,_model):
