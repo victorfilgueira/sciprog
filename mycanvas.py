@@ -21,11 +21,19 @@ class MyCanvas(QtOpenGL.QGLWidget):
         self.m_T = 1000.0
         self.list = None
         self.m_buttonPressed = False
+        self.m_buttonPressedF = False
         self.m_pt0 = QtCore.QPoint(0, 0)
         self.m_pt1 = QtCore.QPoint(0, 0)
         self.m_hmodel = HeModel()
         self.m_controller = HeController(self.m_hmodel)
         self.tol = 0.1
+        self.m_ptf0 = QtCore.QPointF(0.0,0.0)
+        self.m_ptf1 = QtCore.QPointF(0.0,0.0)
+        self.pointsIn = []
+        self.pointTemp = dict()
+        self.pointForce = dict()
+        self.points = []
+        self.selections = []
         
     def initializeGL(self):
         #glClearColor(1.0, 1.0, 1.0, 1.0)
@@ -49,40 +57,42 @@ class MyCanvas(QtOpenGL.QGLWidget):
     
     def paintGL(self):
         glClear(GL_COLOR_BUFFER_BIT)
-        if(self.m_model==None)or(self.m_model.isEmpty()): 
-            return
+        # if(self.m_model==None)or(self.m_model.isEmpty()): return
         glCallList(self.list)
         glDeleteLists(self.list, 1)
         self.list = glGenLists(1)
         glNewList(self.list, GL_COMPILE)
+
+        # desenho dos pontos coletados
         pt0_U = self.convertPtCoordsToUniverse(self.m_pt0)
         pt1_U = self.convertPtCoordsToUniverse(self.m_pt1)
-        glColor3f(1.0, 0.0, 0.0)
-        glBegin(GL_LINE_STRIP)
-        glVertex2f(pt0_U.x(), pt0_U.y())
-        glVertex2f(pt1_U.x(), pt1_U.y())
-        glEnd()
-        if not((self.m_model == None) and (self.m_model.isEmpty())):
+
+        if not ((self.m_model == None) and (self.m_model.isEmpty())):
             verts = self.m_model.getVerts()
-            glColor3f(0.0, 1.0, 0.0) # green
-            glBegin(GL_TRIANGLES)
-            for vtx in verts:
-                glVertex2f(vtx.getX(), vtx.getY())
-            glEnd()
+            glColor3f(0.0, 1.0, 0.0)  # green
+            # glBegin(GL_TRIANGLES)
+            # for vtx in verts:
+            #     glVertex2f(vtx.getX(), vtx.getY())
+            # glEnd()
             curves = self.m_model.getCurves()
-            glColor3f(0.0, 0.0, 1.0) # blue
+            glColor3f(0.0, 0.0, 1.0)  # blue
             glBegin(GL_LINES)
             for curv in curves:
                 glVertex2f(curv.getP1().getX(), curv.getP1().getY())
                 glVertex2f(curv.getP2().getX(), curv.getP2().getY())
             glEnd()
-        
-        if not(self.m_hmodel.isEmpty()):
-            print("teste")
-            patches = self.m_hmodel.getPatches() # retalhos, regioes construídas automaticamente
-            glColor3f(3.0, 0.0, 1.0)
+
+        glColor3f(2.0, 2.0, 0.0)
+        glBegin(GL_LINE_STRIP)
+        glVertex2f(pt0_U.x(), pt0_U.y())
+        glVertex2f(pt1_U.x(), pt1_U.y())
+        glEnd()
+
+        if not (self.m_hmodel.isEmpty()):
+
+            patches = self.m_hmodel.getPatches()
+            glColor3f(5.0, 0.0, 1.0)
             for pat in patches:
-                print('Patches: ' + str(len(patches)))
                 triangs = Tesselation.tessellate(pat.getPoints())
                 for triang in triangs:
                     glBegin(GL_TRIANGLES)
@@ -92,63 +102,92 @@ class MyCanvas(QtOpenGL.QGLWidget):
 
             segments = self.m_hmodel.getSegments()
             glColor3f(0.0, 1.0, 1.0)
-            print(len(segments))
             for curv in segments:
                 ptc = curv.getPointsToDraw()
                 glBegin(GL_LINES)
 
                 glVertex2f(ptc[0].getX(), ptc[0].getY())
                 glVertex2f(ptc[1].getX(), ptc[1].getY())
-                
-                glEnd()
-                
-            verts = self.m_hmodel.getPoints()
-            glColor3f(1.0, 0.0, 0.0)
-            glPointSize(5)
-            glBegin(GL_POINTS)
-            for vert in verts:
-                glVertex2f(vert.getX(), vert.getY())
-            glEnd()
-            print(verts)
-            
-        glEndList()
-        
-        if(len(patches) > 0):
-            x_min = min(vtx.getX() for vtx in verts)
-            x_max = max(vtx.getX() for vtx in verts)
-            y_min = min(vtx.getY() for vtx in verts)
-            y_max = max(vtx.getY() for vtx in verts)
-            spacing = 60
-            
-            grid_points = self.generateGridPoints(x_min, x_max, y_min, y_max, spacing)
 
-            points_inside_region = [pt for pt in grid_points if self.isPointInsideRegion(pt, verts)]
-            
-            glColor3f(1.0, 1.0, 0.0)  # Cor amarela para os pontos do grid
+                glEnd()
+
+            verts = self.m_hmodel.getPoints()
+            glColor3f(3.0, 0.0, 1.0)
             glPointSize(5)
             glBegin(GL_POINTS)
-            for pt in points_inside_region:
-                glVertex2f(pt[0], pt[1])
+            ptf0_U = self.convertPtCoordsToUniverse(self.m_ptf0)
+            ptf1_U = self.convertPtCoordsToUniverse(self.m_ptf1)
+            k = []
+            for vert in verts:
+                if (
+                        ((ptf0_U.x() <= vert.getX() <= ptf1_U.x()) and (ptf1_U.y() <= vert.getY() <= ptf0_U.y())) or
+                        ((ptf0_U.x() >= vert.getX() >= ptf1_U.x()) and (ptf0_U.y() >= vert.getY() >= ptf1_U.y())) or
+                        ((ptf0_U.x() >= vert.getX() >= ptf1_U.x()) and (ptf0_U.y() <= vert.getY() <= ptf1_U.y())) or
+                        ((ptf0_U.x() <= vert.getX() <= ptf1_U.x()) and (ptf0_U.y() <= vert.getY() <= ptf1_U.y()))
+                ):
+                    glColor3f(1.0, 0.0, 0.0)
+
+                    self.selections.append([vert.getX(), vert.getY()])
+                    glVertex2f(vert.getX(), vert.getY())
+                else:
+                    glColor3f(0.0, 1.0, 0.0)
+                    glVertex2f(vert.getX(), vert.getY())
             glEnd()
+
+        ptf0_U = self.convertPtCoordsToUniverse(self.m_ptf0)
+        ptf1_U = self.convertPtCoordsToUniverse(self.m_ptf1)
+
+        glColor3f(1.0, 0.0, 0.0)
+        glBegin(GL_LINE_STRIP)
+        glVertex2f(ptf0_U.x(), ptf0_U.y())
+        glVertex2f(ptf1_U.x(), ptf0_U.y())
+        glVertex2f(ptf1_U.x(), ptf1_U.y())
+        glVertex2f(ptf0_U.x(), ptf1_U.y())
+        glVertex2f(ptf0_U.x(), ptf0_U.y())
+        glEnd()
+        glEndList()
     
-    def generateGridPoints(self, x_min, x_max, y_min, y_max, spacing):
-        points = []
-        y = y_min
-        while y <= y_max:
-            x = x_min
-            while x <= x_max:
-                points.append((x, y))
-                x += spacing
-            y += spacing
-        return points
-    
-    # def isPointInsideRegion(self, point, region_vertices):
-    #     x_min = min(vertex.getX() for vertex in region_vertices)
-    #     x_max = max(vertex.getX() for vertex in region_vertices)
-    #     y_min = min(vertex.getY() for vertex in region_vertices)
-    #     y_max = max(vertex.getY() for vertex in region_vertices)
-    #     x, y = point
-    #     return x_min <= x <= x_max and y_min <= y <= y_max
+    def setGrid(self, a, b):
+        spacebtnw = self.m_w /a
+        spacebtnh = self.m_h /b
+        point = 0
+        xpoints = []
+        ypoints = []
+        for i in range(a):
+            pt = [self.convertPtCoordsToUniverse(QtCore.QPointF(point,0)).x(),
+                self.convertPtCoordsToUniverse(QtCore.QPointF(point,0)).y()]
+            xpoints.append(pt)
+            point += spacebtnw
+
+        point = 0
+
+        for j in range(b):
+            pt = [self.convertPtCoordsToUniverse(QtCore.QPointF(0, point)).x(),
+                self.convertPtCoordsToUniverse(QtCore.QPointF(0, point)).y()]
+            ypoints.append(pt)
+            point += spacebtnh
+
+        patches = self.m_hmodel.getPatches()
+        pointsDict = dict()
+        pointsInMatrix = [[0 for x in range(a)] for y in range(b)]
+
+        cx = 0
+        cy = 0
+        for i in xpoints:
+            for j in ypoints:
+                for pat in patches:
+                    p = Point(i[0],j[1])
+                    self.points.append(Point(i[0],j[1]))
+                    if pat.isPointInside(p):
+                        pointsInMatrix[cy][cx] = [i[0],j[1]]
+                        self.m_controller.insertPoint([i[0],j[1]], self.tol)
+                cy += 1
+            cy = 0
+            cx += 1
+
+        self.pointsIn = pointsInMatrix
+        self.update()
+        self.paintGL()
     
     def isPointInsideRegion(self, point, polygon_vertices):
         x, y = point
@@ -179,31 +218,55 @@ class MyCanvas(QtOpenGL.QGLWidget):
         return QtCore.QPointF(x,y)
     
     def mousePressEvent(self, event):
-        self.m_buttonPressed = True
-        self.m_pt0 = event.pos()
+        if event.button() == 1:
+            self.m_buttonPressed = True
+            self.m_pt0 = event.pos()
+        else:
+            self.m_buttonPressedF = True
+            self.m_ptf0 = event.pos()
     
     def mouseMoveEvent(self, event):
         if self.m_buttonPressed:
             self.m_pt1 = event.pos()
             self.update()
+        if self.m_buttonPressedF:
+            self.m_ptf1 = event.pos()
+            self.update()
         
     def mouseReleaseEvent(self, event):
-        pt0_U = self.convertPtCoordsToUniverse(self.m_pt0)
-        pt1_U = self.convertPtCoordsToUniverse(self.m_pt1)
-        self.m_model.setCurve(pt0_U.x(), pt0_U.y(), pt1_U.x(), pt1_U.y())
-        # self.m_model.setCurve(self.m_pt0.x(), self.m_pt0.y(), self.m_pt1.x(), self.m_pt1.y())
-        self.m_buttonPressed = False
-        self.m_pt0.setX(0)
-        self.m_pt0.setY(0)
-        self.m_pt1.setX(0)
-        self.m_pt1.setY(0)
-        p0 = Point(pt0_U.x(), pt0_U.y())
-        p1 = Point(pt1_U.x(), pt1_U.y())
-        segment = Line(p0, p1)
-        self.m_controller.insertSegment(segment, 0.01)
-        self.update()
-        self.repaint()
+        if event.button() == 1:
+            pt0_U = self.convertPtCoordsToUniverse(self.m_pt0)
+            pt1_U = self.convertPtCoordsToUniverse(self.m_pt1)
 
+            self.m_model.setCurve(pt0_U.x(),pt0_U.y(),pt1_U.x(),pt1_U.y())
+            self.m_controller.insertSegment([pt0_U.x(),pt0_U.y(),pt1_U.x(),pt1_U.y()], self.tol)
+            self.m_buttonPressed = False
+            self.m_pt0.setX(0)
+            self.m_pt0.setY(0)
+            self.m_pt1.setX(0)
+            self.m_pt1.setY(0)
+            self.update()
+            self.paintGL()
+
+        else:
+            ptf0_U = self.convertPtCoordsToUniverse(self.m_ptf0)
+            ptf1_U = self.convertPtCoordsToUniverse(self.m_ptf1)
+
+            self.m_ptf0 = QtCore.QPointF(0.0,0.0)
+            self.m_ptf1 = QtCore.QPointF(0.0,0.0)
+            self.m_buttonPressedF = False
+            self.update()
+            
+    def setTemp(self, temp):
+        for p in self.selections:
+            self.pointTemp[(p[0],p[1])] = temp
+        self.selections = []
+        
+    def setForce(self, force):
+        for p in self.selections:
+            self.pointForce[(p[0],p[1])] = force
+        self.selections = []
+    
     def setModel(self,_model):
         self.m_model = _model
 

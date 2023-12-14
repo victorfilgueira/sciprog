@@ -1,33 +1,48 @@
-#Métodos das Diferenças Finitas
+import json
 import numpy as np
 
-L = 10
-n = 6
+def main(filename):
+    # Lendo o JSON
+    with open(filename, 'r') as f:
+        inDict = json.load(f)
 
-dx = L/(n-1)
+    pontos = np.array(inDict['coords'], dtype=int)
+    contorno = np.array(inDict['contour'], dtype=int)
 
-restr1 = [1, 300]
-restr2 = [1, 400]
+    bloco = [4, -1, -1, -1, -1]
+    n, cols = pontos.shape
 
-A = np.zeros(shape=(n,n))
-b = np.zeros(shape=(n,1))
+    # Iniciando matrize A e vetor b
+    A = np.zeros((n, n), dtype=float)
+    b = np.zeros((n, 1), dtype=float)
 
-for i in range(n-2):
-    A[i+1, i] = -1
-    A[i+1, i+1] = 2.2
-    A[i+1, i+2] = -1
-    b[i+1] = 40
-    
-if (restr1[0]==1):
-    A[0,0] = 1
-    b[0] = restr1[1]
-    
-if (restr2[0]==1):
-    A[n-1,n-1] = 1
-    b[n-1] = restr2[1]
-    
-T = np.linalg.solve(A, b)
+    # print(len(pontos))
+    # print(len(contorno))
+    # Montando A e b
+    for i in range(n):
+        A[i, i] = bloco[0]
+        for j in range(cols):
+            loc = pontos[i, j]
+            if 0 < loc < len(contorno):
+                # print(loc)
+                if contorno[loc, 0] == 0:
+                    A[i, loc] = bloco[j + 1]
+                else:
+                    b[i, 0] += contorno[loc, 1]
 
-print(A)
-print(b)
-print(T)
+    for i in range(n):
+        if contorno[i, 0] == 1:
+            A[i, :] = np.zeros(n)
+            A[i, i] = 1.0
+            b[i, 0] = contorno[i, 1]
+
+    # Resolvendo o sistema linear
+    x = np.linalg.solve(A, b)
+
+    # Salvando a solução em um arquivo JSON
+    data = {"temp": x.flatten().tolist()}
+    with open("resultado.json", "w") as f:
+        json.dump(data, f)
+
+if __name__ == "__main__":
+    main("points.json")
